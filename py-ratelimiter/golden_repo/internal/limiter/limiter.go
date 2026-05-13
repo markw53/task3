@@ -6,10 +6,6 @@ import (
     "ratelimiter/internal/config"
 )
 
-//
-// FIXED WINDOW LIMITER
-//
-
 type FixedWindowLimiter struct {
     Cfg         config.LimiterConfig
     WindowStart float64
@@ -19,7 +15,7 @@ type FixedWindowLimiter struct {
 func NewFixedWindowLimiter(cfg config.LimiterConfig) *FixedWindowLimiter {
     return &FixedWindowLimiter{
         Cfg:         cfg,
-        WindowStart: -1, // sentinel for uninitialized
+        WindowStart: -1, // sentinel: uninitialized
         Count:       0,
     }
 }
@@ -32,8 +28,7 @@ func (l *FixedWindowLimiter) Allow(ts float64) (bool, int, float64) {
 
     windowEnd := l.WindowStart + float64(l.Cfg.WindowSeconds)
 
-    // Python semantics:
-    // When ts >= windowEnd, the new window starts at ts (NOT at windowEnd)
+    // if we’re past the window, start a new one at ts
     if ts >= windowEnd {
         l.WindowStart = ts
         l.Count = 0
@@ -47,10 +42,6 @@ func (l *FixedWindowLimiter) Allow(ts float64) (bool, int, float64) {
 
     return false, l.Count, windowEnd
 }
-
-//
-// SLIDING WINDOW LIMITER
-//
 
 type SlidingWindowLimiter struct {
     Cfg    config.LimiterConfig
@@ -67,7 +58,7 @@ func NewSlidingWindowLimiter(cfg config.LimiterConfig) *SlidingWindowLimiter {
 func (l *SlidingWindowLimiter) Allow(ts float64) (bool, int, float64) {
     windowStart := ts - float64(l.Cfg.WindowSeconds)
 
-    // evict old events
+    // evict events outside the window
     i := 0
     for _, v := range l.Events {
         if v > windowStart {
@@ -87,57 +78,29 @@ func (l *SlidingWindowLimiter) Allow(ts float64) (bool, int, float64) {
     return false, len(l.Events), reset
 }
 
-//
-// ENGINE
-//
-
 type Engine struct {
-    limiters    map[string]any
-    limitersCfg map[string]config.LimiterConfig
+    limiters map[string]any
 }
 
 func NewEngine(cfgs map[string]config.LimiterConfig) *Engine {
-    return &Engine{
-        limiters:    make(map[string]any),
-        limitersCfg: cfgs,
+    m := make(map[string]any)
+    for name, cfg := range cfgs {
+        if cfg.Mode == config.ModeFixed {
+            m[name] = NewFixedWindowLimiter(cfg)
+        } else {
+            m[name] = NewSlidingWindowLimiter(cfg)
+        }
     }
+    return &Engine{limiters: m}
 }
 
-func (e *Engine) getLimiter(endpoint string, user string) any {
-    key := endpoint + ":" + user
-
-    if l, ok := e.limiters[key]; ok {
-        return l
-    }
-
-    cfg, ok := e.limitersCfg[endpoint]
-    if !ok {
-        return nil
-    }
-
-    var l any
-    if cfg.Mode == config.ModeFixed {
-        l = NewFixedWindowLimiter(cfg)
-    } else {
-        l = NewSlidingWindowLimiter(cfg)
-    }
-
-    e.limiters[key] = l
-    return l
-}
-
-func (e *Engine) Allow(endpoint string, user string, ts float64) (bool, int, float64) {
-    cfg, ok := e.limitersCfg[endpoint]
+func (e *Engine) Allow(endpoint string, ts float64) (bool, int, float64) {
+    l, ok := e.limiters[endpoint]
     if !ok {
         return true, 0, ts
     }
 
-    limiter := e.getLimiter(endpoint, user)
-    if limiter == nil {
-        return true, 0, ts
-    }
-
-    switch v := limiter.(type) {
+    switch v := l.(type) {
     case *FixedWindowLimiter:
         return v.Allow(ts)
     case *SlidingWindowLimiter:
@@ -146,10 +109,6 @@ func (e *Engine) Allow(endpoint string, user string, ts float64) (bool, int, flo
         return true, 0, ts
     }
 }
-
-//
-// UTILITY
-//
 
 func NowSeconds() float64 {
     return float64(time.Now().UnixNano()) / 1e9

@@ -5,7 +5,6 @@ import (
     "context"
     "encoding/json"
     "io"
-    "strings"
 
     "ratelimiter/internal/config"
     "ratelimiter/internal/limiter"
@@ -20,22 +19,14 @@ type Request struct {
 
 type RateLimiterApp struct {
     cfg    *config.AppConfig
-    engine *Engine
+    engine *limiter.Engine
 }
 
 func NewRateLimiterApp(cfg *config.AppConfig) *RateLimiterApp {
     return &RateLimiterApp{
         cfg:    cfg,
-        engine: NewEngine(copyLimiterCfg(cfg.Limiters))
+        engine: limiter.NewEngine(cfg.Limiters),
     }
-}
-
-func copyLimiterCfg(src map[string]config.LimiterConfig) map[string]config.LimiterConfig {
-    dst := make(map[string]config.LimiterConfig)
-    for k, v := range src {
-        dst[k] = v
-    }
-    return dst
 }
 
 func parseRequest(line string) (*Request, error) {
@@ -84,21 +75,15 @@ func parseRequest(line string) (*Request, error) {
 }
 
 func (a *RateLimiterApp) ProcessStream(ctx context.Context, r io.Reader) int {
-    reader := bufio.NewReader(r)
-for {
-    line, err := reader.ReadString('\n')
-    if err == io.EOF {
-        break
+    scanner := bufio.NewScanner(r)
+    for scanner.Scan() {
+        line := scanner.Text()
+        if line == "" {
+            continue
+        }
+        a.handleLine(line)
     }
-    if err != nil {
-        break
-    }
-    line = strings.TrimSpace(line)
-    if line == "" {
-        continue
-    }
-    a.handleLine(line)
-}
+    return 0
 }
 
 func (a *RateLimiterApp) handleLine(line string) {
@@ -108,7 +93,7 @@ func (a *RateLimiterApp) handleLine(line string) {
         return
     }
 
-    allowed, count, reset := a.engine.Allow(req.Endpoint, req.User, req.Ts)
+    allowed, count, reset := a.engine.Allow(req.Endpoint, req.Ts)
 
     utils.LogSimple(
         "decision",
