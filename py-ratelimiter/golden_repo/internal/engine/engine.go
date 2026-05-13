@@ -5,6 +5,7 @@ import (
     "context"
     "encoding/json"
     "io"
+    "strings"
 
     "ratelimiter/internal/config"
     "ratelimiter/internal/limiter"
@@ -25,8 +26,16 @@ type RateLimiterApp struct {
 func NewRateLimiterApp(cfg *config.AppConfig) *RateLimiterApp {
     return &RateLimiterApp{
         cfg:    cfg,
-        engine: NewEngine(cfg.Limiters),
+        engine: NewEngine(copyLimiterCfg(cfg.Limiters))
     }
+}
+
+func copyLimiterCfg(src map[string]config.LimiterConfig) map[string]config.LimiterConfig {
+    dst := make(map[string]config.LimiterConfig)
+    for k, v := range src {
+        dst[k] = v
+    }
+    return dst
 }
 
 func parseRequest(line string) (*Request, error) {
@@ -75,15 +84,21 @@ func parseRequest(line string) (*Request, error) {
 }
 
 func (a *RateLimiterApp) ProcessStream(ctx context.Context, r io.Reader) int {
-    scanner := bufio.NewScanner(r)
-    for scanner.Scan() {
-        line := scanner.Text()
-        if line == "" {
-            continue
-        }
-        a.handleLine(line)
+    reader := bufio.NewReader(r)
+for {
+    line, err := reader.ReadString('\n')
+    if err == io.EOF {
+        break
     }
-    return 0
+    if err != nil {
+        break
+    }
+    line = strings.TrimSpace(line)
+    if line == "" {
+        continue
+    }
+    a.handleLine(line)
+}
 }
 
 func (a *RateLimiterApp) handleLine(line string) {
