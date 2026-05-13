@@ -6,6 +6,10 @@ import (
     "ratelimiter/internal/config"
 )
 
+//
+// FIXED WINDOW LIMITER
+//
+
 type FixedWindowLimiter struct {
     Cfg         config.LimiterConfig
     WindowStart float64
@@ -13,25 +17,40 @@ type FixedWindowLimiter struct {
 }
 
 func NewFixedWindowLimiter(cfg config.LimiterConfig) *FixedWindowLimiter {
-    return &FixedWindowLimiter{Cfg: cfg}
+    return &FixedWindowLimiter{
+        Cfg:         cfg,
+        WindowStart: -1, // sentinel for uninitialized
+        Count:       0,
+    }
 }
 
 func (l *FixedWindowLimiter) Allow(ts float64) (bool, int, float64) {
-    if l.WindowStart == 0 {
+    // initialize on first request
+    if l.WindowStart < 0 {
         l.WindowStart = ts
     }
+
     windowEnd := l.WindowStart + float64(l.Cfg.WindowSeconds)
+
+    // Python semantics:
+    // When ts >= windowEnd, the new window starts at ts (NOT at windowEnd)
     if ts >= windowEnd {
         l.WindowStart = ts
         l.Count = 0
         windowEnd = l.WindowStart + float64(l.Cfg.WindowSeconds)
     }
+
     if l.Count < l.Cfg.MaxRequests {
         l.Count++
         return true, l.Count, windowEnd
     }
+
     return false, l.Count, windowEnd
 }
+
+//
+// SLIDING WINDOW LIMITER
+//
 
 type SlidingWindowLimiter struct {
     Cfg    config.LimiterConfig
@@ -39,12 +58,16 @@ type SlidingWindowLimiter struct {
 }
 
 func NewSlidingWindowLimiter(cfg config.LimiterConfig) *SlidingWindowLimiter {
-    return &SlidingWindowLimiter{Cfg: cfg, Events: []float64{}}
+    return &SlidingWindowLimiter{
+        Cfg:    cfg,
+        Events: []float64{},
+    }
 }
 
 func (l *SlidingWindowLimiter) Allow(ts float64) (bool, int, float64) {
     windowStart := ts - float64(l.Cfg.WindowSeconds)
-    // evict old
+
+    // evict old events
     i := 0
     for _, v := range l.Events {
         if v > windowStart {
@@ -53,14 +76,20 @@ func (l *SlidingWindowLimiter) Allow(ts float64) (bool, int, float64) {
         }
     }
     l.Events = l.Events[:i]
+
     if len(l.Events) < l.Cfg.MaxRequests {
         l.Events = append(l.Events, ts)
         reset := l.Events[0] + float64(l.Cfg.WindowSeconds)
         return true, len(l.Events), reset
     }
+
     reset := l.Events[0] + float64(l.Cfg.WindowSeconds)
     return false, len(l.Events), reset
 }
+
+//
+// ENGINE
+//
 
 type Engine struct {
     limiters map[string]any
@@ -83,6 +112,7 @@ func (e *Engine) Allow(name string, ts float64) (bool, int, float64) {
     if !ok {
         return true, 0, ts
     }
+
     switch v := l.(type) {
     case *FixedWindowLimiter:
         return v.Allow(ts)
@@ -93,7 +123,10 @@ func (e *Engine) Allow(name string, ts float64) (bool, int, float64) {
     }
 }
 
-// helper for tests if needed
+//
+// UTILITY
+//
+
 func NowSeconds() float64 {
     return float64(time.Now().UnixNano()) / 1e9
 }

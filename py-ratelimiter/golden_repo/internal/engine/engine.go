@@ -79,11 +79,7 @@ func (a *RateLimiterApp) ProcessStream(ctx context.Context, r io.Reader) int {
         if line == "" {
             continue
         }
-        wg.Add(1)
-        go func(line string) {
-            defer wg.Done()
-            a.handleLine(line)
-        }(line)
+        a.handleLine(line)
     }
     wg.Wait()
     return 0
