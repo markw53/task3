@@ -1,0 +1,13 @@
+{
+  "task_name": "py-ratelimiter",
+  "source_language": "python",
+  "target_language": "go",
+  "difficulty": "medium",
+  "dominant_challenge": "concurrency_model_adaptation",
+  "source_repo": "source_repo",
+  "golden_repo": "golden_repo",
+  "behavioral_tests": {
+    "test_cmd": "pytest -q",
+    "expected_test_count": 15
+  }
+}
