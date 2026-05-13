@@ -1,0 +1,42 @@
+{
+  "instance_id": "sycamore__python_to_go_ratelimiter_001",
+  "pipeline": "sycamore",
+  "task_type": "repository_translation",
+  "repo": {
+    "image_name": "micro1ai/sycamore-ratelimiter-combined:v1",
+    "repo_dir": "/source"
+  },
+  "target": {
+    "language": "go",
+    "go_version": "1.22",
+    "module_path": "github.com/example/ratelimiter",
+    "repo_dir": "/target"
+  },
+  "language_pair": "python-to-go",
+  "direction": "dynamic-to-static",
+  "difficulty_band": "medium",
+  "title": "Translate a Config‑Driven Rate Limiter from Python to Go",
+  "build_cmd": "export PATH=/usr/local/go/bin:$PATH GOFLAGS=-insecure GONOSUMCHECK=* GONOSUMDB=* GOPROXY=direct GOSUMDB=off && cd /target && go build -o /target/ratelimiter ./cmd/ratelimiter",
+  "test_cmd": "export PATH=/usr/local/go/bin:$PATH GOFLAGS=-insecure GONOSUMCHECK=* GONOSUMDB=* GOPROXY=direct GOSUMDB=off && cd /target && ( [ -x /target/ratelimiter ] || go build -o /target/ratelimiter ./cmd/ratelimiter ) && RATELIMITER_BIN=/target/ratelimiter python3 -m pytest /target/tests/test_ratelimiter_behavior.py --rootdir=/target/tests -v --tb=short --no-header -rA --color=no -p no:cacheprovider",
+  "log_parser": "parse_log_pytest",
+  "FAIL_TO_PASS": [
+    "test_ratelimiter_behavior.py::test_config_missing_file",
+    "test_ratelimiter_behavior.py::test_config_invalid_mode",
+    "test_ratelimiter_behavior.py::test_config_negative_limit",
+    "test_ratelimiter_behavior.py::test_fixed_window_allows_then_blocks",
+    "test_ratelimiter_behavior.py::test_fixed_window_resets_after_window",
+    "test_ratelimiter_behavior.py::test_sliding_window_counts_within_window",
+    "test_ratelimiter_behavior.py::test_sliding_window_eviction",
+    "test_ratelimiter_behavior.py::test_unknown_endpoint_allowed",
+    "test_ratelimiter_behavior.py::test_request_validation_error_missing_field",
+    "test_ratelimiter_behavior.py::test_request_validation_error_bad_ts",
+    "test_ratelimiter_behavior.py::test_multiple_users_isolated",
+    "test_ratelimiter_behavior.py::test_structured_logging_has_event_key",
+    "test_ratelimiter_behavior.py::test_reset_field_present",
+    "test_ratelimiter_behavior.py::test_concurrent_like_behavior",
+    "test_ratelimiter_behavior.py::test_no_input_produces_no_decisions"
+  ],
+  "PASS_TO_PASS": [],
+  "expected_test_count": 15,
+  "golden_repo": "golden_repo"
+}

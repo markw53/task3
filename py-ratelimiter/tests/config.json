@@ -1,6 +1,0 @@
-{
-  "limiters": [
-    {"name": "login", "mode": "fixed", "window_seconds": 10, "max_requests": 2},
-    {"name": "search", "mode": "sliding", "window_seconds": 5, "max_requests": 3}
-  ]
-}

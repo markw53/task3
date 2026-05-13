@@ -1,0 +1,39 @@
+You are translating a Python rate limiter application into Go.
+
+The original Python program reads JSON lines from stdin, one per request, and outputs JSON lines describing rate‑limit decisions. It supports two limiter modes: fixed window and sliding window. The Go version must behave identically to the Python reference implementation.
+
+Your task is to implement the Go version of the rate limiter. The Go program must:
+
+1. Read newline‑delimited JSON request objects from stdin.
+2. Each request has fields:
+   - "user": string
+   - "endpoint": string
+   - "ts": number (float or int)
+3. Look up the limiter configuration for the given endpoint.
+4. Apply the correct rate‑limiting algorithm:
+   - Fixed window:
+       • Track a window start time and a count.
+       • If ts >= window_start + window_seconds, reset window_start = ts and count = 0.
+       • Allow if count < max_requests.
+   - Sliding window:
+       • Maintain a list of timestamps.
+       • Remove timestamps <= ts - window_seconds.
+       • Allow if len(events) < max_requests.
+5. Output a JSON object for each request with fields:
+   - "event": "decision"
+   - "user": <user>
+   - "endpoint": <endpoint>
+   - "ts": <ts>
+   - "allowed": true/false
+   - "count": number of requests in the current window
+   - "reset": timestamp when the window will reset
+6. The program must process input sequentially and deterministically.
+7. No concurrency is required.
+8. The Go implementation must match the Python behaviour exactly, including:
+   - Window reset semantics
+   - Sliding window eviction rules
+   - Output formatting
+   - Error handling for malformed JSON
+9. The program must exit with code 0 after processing all input.
+
+You must produce a complete, working Go implementation that passes all provided tests.
