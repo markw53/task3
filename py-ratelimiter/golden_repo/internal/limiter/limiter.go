@@ -92,28 +92,52 @@ func (l *SlidingWindowLimiter) Allow(ts float64) (bool, int, float64) {
 //
 
 type Engine struct {
-    limiters map[string]any
+    limiters    map[string]any
+    limitersCfg map[string]config.LimiterConfig
 }
 
 func NewEngine(cfgs map[string]config.LimiterConfig) *Engine {
-    m := make(map[string]any)
-    for name, cfg := range cfgs {
-        if cfg.Mode == config.ModeFixed {
-            m[name] = NewFixedWindowLimiter(cfg)
-        } else {
-            m[name] = NewSlidingWindowLimiter(cfg)
-        }
+    return &Engine{
+        limiters:    make(map[string]any),
+        limitersCfg: cfgs,
     }
-    return &Engine{limiters: m}
 }
 
-func (e *Engine) Allow(name string, ts float64) (bool, int, float64) {
-    l, ok := e.limiters[name]
+func (e *Engine) getLimiter(endpoint string, user string) any {
+    key := endpoint + ":" + user
+
+    if l, ok := e.limiters[key]; ok {
+        return l
+    }
+
+    cfg, ok := e.limitersCfg[endpoint]
+    if !ok {
+        return nil
+    }
+
+    var l any
+    if cfg.Mode == config.ModeFixed {
+        l = NewFixedWindowLimiter(cfg)
+    } else {
+        l = NewSlidingWindowLimiter(cfg)
+    }
+
+    e.limiters[key] = l
+    return l
+}
+
+func (e *Engine) Allow(endpoint string, user string, ts float64) (bool, int, float64) {
+    cfg, ok := e.limitersCfg[endpoint]
     if !ok {
         return true, 0, ts
     }
 
-    switch v := l.(type) {
+    limiter := e.getLimiter(endpoint, user)
+    if limiter == nil {
+        return true, 0, ts
+    }
+
+    switch v := limiter.(type) {
     case *FixedWindowLimiter:
         return v.Allow(ts)
     case *SlidingWindowLimiter:

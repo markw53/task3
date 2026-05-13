@@ -5,7 +5,6 @@ import (
     "context"
     "encoding/json"
     "io"
-    "sync"
 
     "ratelimiter/internal/config"
     "ratelimiter/internal/limiter"
@@ -20,13 +19,13 @@ type Request struct {
 
 type RateLimiterApp struct {
     cfg    *config.AppConfig
-    engine *limiter.Engine
+    engine *Engine
 }
 
 func NewRateLimiterApp(cfg *config.AppConfig) *RateLimiterApp {
     return &RateLimiterApp{
         cfg:    cfg,
-        engine: limiter.NewEngine(cfg.Limiters),
+        engine: NewEngine(cfg.Limiters),
     }
 }
 
@@ -35,6 +34,7 @@ func parseRequest(line string) (*Request, error) {
     if err := json.Unmarshal([]byte(line), &m); err != nil {
         return nil, &utils.ValidationError{Msg: "Invalid request JSON: " + err.Error()}
     }
+
     userAny, err := utils.RequireField(m, "user")
     if err != nil {
         return nil, err
@@ -47,6 +47,7 @@ func parseRequest(line string) (*Request, error) {
     if err != nil {
         return nil, err
     }
+
     user, ok := userAny.(string)
     if !ok {
         return nil, &utils.ValidationError{Msg: "user must be a string"}
@@ -55,6 +56,7 @@ func parseRequest(line string) (*Request, error) {
     if !ok {
         return nil, &utils.ValidationError{Msg: "endpoint must be a string"}
     }
+
     var ts float64
     switch v := tsAny.(type) {
     case float64:
@@ -64,6 +66,7 @@ func parseRequest(line string) (*Request, error) {
     default:
         return nil, &utils.ValidationError{Msg: "ts must be a number"}
     }
+
     return &Request{
         User:     user,
         Endpoint: endpoint,
@@ -73,7 +76,6 @@ func parseRequest(line string) (*Request, error) {
 
 func (a *RateLimiterApp) ProcessStream(ctx context.Context, r io.Reader) int {
     scanner := bufio.NewScanner(r)
-    var wg sync.WaitGroup
     for scanner.Scan() {
         line := scanner.Text()
         if line == "" {
@@ -81,7 +83,6 @@ func (a *RateLimiterApp) ProcessStream(ctx context.Context, r io.Reader) int {
         }
         a.handleLine(line)
     }
-    wg.Wait()
     return 0
 }
 
@@ -91,7 +92,9 @@ func (a *RateLimiterApp) handleLine(line string) {
         utils.LogSimple("request_error", "error", err.Error())
         return
     }
-    allowed, count, reset := a.engine.Allow(req.Endpoint, req.Ts)
+
+    allowed, count, reset := a.engine.Allow(req.Endpoint, req.User, req.Ts)
+
     utils.LogSimple(
         "decision",
         "user", req.User,
